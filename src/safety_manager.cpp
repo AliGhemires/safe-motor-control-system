@@ -2,53 +2,74 @@
 #include <iostream>
 #include <stdexcept>
 
-// Constants for threshold limits
-const float CURRENT_THRESHOLD = 30.0; // Amps
-const float TEMPERATURE_THRESHOLD = 75.0; // Celsius
+// Constructor for SafetyManager
+SafetyManager::SafetyManager() : is_system_safe(true), max_current(100.0), max_temperature(75.0) {}
 
-SafetyManager::SafetyManager() : current(0), temperature(0), is_safe(true) {}
-
-void SafetyManager::updateSensors(float current_reading, float temperature_reading) {
-    this->current = current_reading;
-    this->temperature = temperature_reading;
-    checkSafety(); 
-}
-
-void SafetyManager::checkSafety() {
-    if (!is_safe) return; // If already in a hazardous state, skip checks.
-
-    // Check for overcurrent
-    if (current > CURRENT_THRESHOLD) {
-        is_safe = false;
-        handleHazard("Overcurrent detected!");
+// Method to check if system is safe
+bool SafetyManager::check_system_safety(const MotorState &motor_state) {
+    // Ensure we have valid input state
+    if (!is_valid_motor_state(motor_state)) {
+        std::cerr << "ERROR: Invalid motor state provided!" << std::endl;
+        return false;
     }
-
-    // Check for overheating, only if not already in a hazardous state
-    if (is_safe && temperature > TEMPERATURE_THRESHOLD) {
-        is_safe = false;
-        handleHazard("Overheating detected!");
+    
+    // Example of safety checks
+    if (motor_state.current > max_current) {
+        std::cerr << "WARNING: Overcurrent detected!" << std::endl;
+        trigger_safety_protocol();
+        return false;
     }
+    if (motor_state.temperature > max_temperature) {
+        std::cerr << "WARNING: Overheating detected!" << std::endl;
+        trigger_safety_protocol();
+        return false;
+    }
+    // Check for negative values, which are likely erroneous
+    if (motor_state.current < 0 || motor_state.temperature < 0) {
+        std::cerr << "WARNING: Detected negative sensor readings! Check sensor calibration." << std::endl;
+        trigger_safety_protocol();
+        return false;
+    }
+    // Additional safety checks can be added here
+    return true;
 }
 
-void SafetyManager::handleHazard(const std::string &message) {
-    // Log the hazard
-    std::cerr << "Safety Alert: " << message << std::endl;
-    // Implement appropriate safety measures, e.g., shutdown motor
-    shutdownMotor();
+// Method to trigger safety protocols
+void SafetyManager::trigger_safety_protocol() {
+    if (!is_system_safe) {
+        std::cerr << "INFO: Safety protocol already active, redundant trigger ignored." << std::endl;
+        return;
+    }
+    is_system_safe = false;
+    std::cerr << "Safety protocol triggered! Stopping motor.\n";
+    // Code to stop the motor safely
+    stop_motor();
 }
 
-void SafetyManager::shutdownMotor() {
-    std::cout << "Motor has been safely shut down due to safety alert." << std::endl;
-    // Additional logic for shutting down the motor can be added here
+// Mock method to stop the motor
+void SafetyManager::stop_motor() {
+    // Implementation to stop motor safely
+    std::cout << "Motor stopped for safety.\n";
 }
 
-bool SafetyManager::isSafe() const {
-    return is_safe;
+// Method to reset safety protocols
+void SafetyManager::reset_safety() {
+    if (is_system_safe) {
+        std::cerr << "INFO: System already safe, reset unnecessary." << std::endl;
+        return;
+    }
+    is_system_safe = true;
+    std::cout << "Safety protocols reset. System operational again.\n";
 }
 
-void SafetyManager::reset() {
-    is_safe = true;
-    current = 0;
-    temperature = 0;
-    std::cout << "Safety Manager has been reset." << std::endl;
+// Method to check if the system is safe
+bool SafetyManager::is_safe() const {
+    return is_system_safe;
 }
+
+// Helper method to validate motor state
+bool SafetyManager::is_valid_motor_state(const MotorState &motor_state) const {
+    return motor_state.current >= 0 && motor_state.temperature >= 0;
+}
+
+// End of File: SafetyManager.cpp
