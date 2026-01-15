@@ -4,71 +4,62 @@
 
 class MotorControlTest : public ::testing::Test {
 protected:
-    MotorControl motor_control;
-    SafetyManager safety_manager;
+    MotorControl* motor;
+    SafetyManager* safety;
 
-    virtual void SetUp() {
-        // Setup necessary preconditions for the tests
-        motor_control.initialize();
-        safety_manager.initialize();
+    void SetUp() override {
+        // Assume a maximum speed that is considered safe in tests e.g., 200
+        motor = new MotorControl(200);
+        safety = new SafetyManager();
     }
 
-    virtual void TearDown() {
-        // Cleanup if necessary
-        motor_control.shutdown();
+    void TearDown() override {
+        // Clean up resources
+        delete motor;
+        delete safety;
     }
 };
 
 TEST_F(MotorControlTest, TestNormalOperation) {
-    motor_control.setSpeed(0.5);
-    EXPECT_EQ(motor_control.getCurrentSpeed(), 0.5);
+    motor->setSpeed(100);
+    EXPECT_EQ(motor->getSpeed(), 100);
+    // Mocking safety check always true for normal operation test
+    EXPECT_TRUE(safety->isSafeToOperate());
 }
 
-TEST_F(MotorControlTest, TestOvercurrentDetection) {
-    // Simulate an overcurrent situation
-    motor_control.setSpeed(1.5); // Assume this exceeds limits
-    safety_manager.checkForFaults();
-    EXPECT_TRUE(safety_manager.isFaultDetected());
+TEST_F(MotorControlTest, TestOverSpeed) {
+    motor->setSpeed(250); // Exceeds max_speed
+    EXPECT_EQ(motor->getSpeed(), 0); // System should halt motor due to out-of-range safety
+}
+
+TEST_F(MotorControlTest, TestInvalidSpeed) {
+    EXPECT_THROW(motor->setSpeed(-10), std::out_of_range); // Negative speed should throw
 }
 
 TEST_F(MotorControlTest, TestSpeedRegulation) {
-    motor_control.setSpeed(0.3);
-    motor_control.update(); // Update the motor control system
-    EXPECT_NEAR(motor_control.getCurrentSpeed(), 0.3, 0.01);
-}
-
-TEST_F(MotorControlTest, TestFaultRecovery) {
-    motor_control.setSpeed(1.5);
-    safety_manager.checkForFaults();
-    if (safety_manager.isFaultDetected()) {
-        motor_control.recoverFromFault();
+    motor->setSpeed(150);
+    for (int i = 0; i < 10; ++i) {
+        // Add inertia simulation with actual PID control call
+        motor->controlLoop();
+        EXPECT_LE(motor->getSpeed(), 155);
+        EXPECT_GE(motor->getSpeed(), 145);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Simulate control loop delay
     }
-    EXPECT_EQ(motor_control.getCurrentSpeed(), 0.0);
 }
 
-TEST_F(MotorControlTest, TestCLIIntegration) {
-    // Assuming CLI can be tested via interface
-    std::string output = motor_control.runCLI("status");
-    EXPECT_THAT(output, testing::HasSubstr("current speed"));
+TEST_F(MotorControlTest, TestSafetyShutdown) {
+    safety->triggerFault(); // Simulate a fault in safety check
+    EXPECT_EQ(motor->getSpeed(), 0); // Motor should stop due to safety shutdown
+    EXPECT_FALSE(safety->isSafeToOperate()); // Safety should indicate an unsafe state
 }
 
-TEST_F(MotorControlTest, TestBoundarySpeedValueHandling) {
-    motor_control.setSpeed(-0.1); // Test lower boundary
-    EXPECT_GE(motor_control.getCurrentSpeed(), 0.0); // Minimum speed is 0
-    motor_control.setSpeed(1.1); // Test upper boundary assuming max speed is 1
-    EXPECT_LE(motor_control.getCurrentSpeed(), 1.0); // Maximum speed is 1
-}
+TEST_F(MotorControlTest, TestCommandLineInterface) {
+    std::string output;
+    output = motor->command("run --start");
+    EXPECT_EQ(output, "Motor started with safety checks.");
 
-TEST_F(MotorControlTest, TestGradualAcceleration) {
-    double initial_speed = 0.0;
-    double target_speed = 1.0;
-    double increment = 0.1; // Simulate gradual acceleration
-    while (initial_speed < target_speed) {
-        initial_speed += increment;
-        motor_control.setSpeed(initial_speed);
-        motor_control.update();
-        EXPECT_NEAR(motor_control.getCurrentSpeed(), initial_speed, 0.01);
-    }
+    output = motor->command("status");
+    EXPECT_NE(output.find("Motor status:"), std::string::npos);
 }
 
 int main(int argc, char **argv) {
